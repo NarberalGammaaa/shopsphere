@@ -1,0 +1,31 @@
+import axios from 'axios';
+
+// '/api' works in dev (Vite proxy) and in Docker (nginx proxy). Override with VITE_API_URL if needed.
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
+
+api.interceptors.request.use((config) => {
+  try {
+    const auth = JSON.parse(localStorage.getItem('auth') || 'null');
+    if (auth?.token) config.headers.Authorization = `Bearer ${auth.token}`;
+  } catch {
+    /* corrupt storage: send the request without a token */
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error.config?.url || '';
+    // Expired/invalid token on a protected call: drop the session and go to the login page.
+    if (error.response?.status === 401 && !url.startsWith('/auth/')) {
+      localStorage.removeItem('auth');
+      if (window.location.pathname !== '/login') window.location.assign('/login');
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const errorMessage = (e) => e.response?.data?.message || e.message || 'Something went wrong';
+
+export default api;
